@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scam Shield Tip</title>
+    <style>
+      body { font-family: sans-serif; width: 200px; padding: 10px; }
+      #tip { font-size: 1em; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <strong>Fraud Prevention Tips:</strong>
+    <ul>
+      <li>Never share your PIN.</li>
+      <li>Enable 2FA on all accounts.</li>
+      <li>Verify sender numbers before clicking.</li>
+      <li>Hover over links to check the actual URL.</li> 
+      <li>If unsure, contact the company directly through official channels.</li>
+    </ul>
+    <hr>
+    <button id="report-button">Report this Site as Scam</button>
+    <div id="report-status" style="margin-top: 5px; font-size: 0.9em;"></div>
+    <hr>
+    <strong>Manage Blacklist:</strong>
+    <ul id="blacklist-display" style="max-height: 150px; overflow-y: auto; list-style: none; padding-left: 5px; margin-top: 5px;">
+      <!-- Blacklisted sites will be listed here by popup.js -->
+    </ul>
+    <script src="../js/popup.js"></script>
+  </body>
+</html> 

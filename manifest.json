@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Scam Shield MVP",
+  "version": "1.0",
+  "description": "Warns about scam sites and suspicious links.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "src/html/popup.html"
+  },
+  "background": {
+    "service_worker": "src/js/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/js/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["data/blacklist.json"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

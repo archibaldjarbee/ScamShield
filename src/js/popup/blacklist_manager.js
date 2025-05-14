@@ -54,18 +54,46 @@ async function saveBlacklist(blacklist) {
  * @returns {string|null} The extracted hostname, or null if parsing fails or input is invalid.
  */
 export function parseHostname(urlInput) {
-    if (!urlInput || urlInput.trim() === '') {
+    if (!urlInput || typeof urlInput !== 'string' || urlInput.trim() === '') {
         return null;
     }
+    const trimmedInput = urlInput.trim();
+
     try {
-        const url = new URL(urlInput.startsWith('http') ? urlInput : `http://${urlInput}`);
-        return url.hostname;
-    } catch (e) {
-        warn("(Popup/BlacklistManager): Input is not a full URL, treating as hostname:", urlInput);
-        if (/[\s\/\:\?\#\[\]\@\!\$\&\'\(\)\*\+\,\;\=]/.test(urlInput)) {
-            return null; 
+        // Attempt to parse as a full URL first
+        const url = new URL(trimmedInput.startsWith('http') ? trimmedInput : `http://${trimmedInput}`);
+        // Further validation for the hostname from URL object
+        if (url.hostname && /^[a-zA-Z0-9\-\.]+$/.test(url.hostname) && !url.hostname.startsWith('.') && !url.hostname.endsWith('.')) {
+             // Check for invalid characters that might have slipped through URL parsing for the hostname part specifically.
+            if (/[<>"'&]/.test(url.hostname)) {
+                warn("(Popup/BlacklistManager): Hostname from URL contains invalid characters after parsing:", url.hostname);
+                return null;
+            }
+            return url.hostname;
+        } else {
+            warn("(Popup/BlacklistManager): URL object created, but hostname part is invalid:", url.hostname);
+            // Fall through to direct hostname validation if URL parsing yields an invalid hostname format
         }
-        return urlInput.trim(); 
+    } catch (e) {
+        // If new URL fails, it's not a full URL, so treat as a potential direct hostname string
+        // log("(Popup/BlacklistManager): Input not a full URL, attempting direct hostname validation for:", trimmedInput); 
+    }
+
+    // Direct hostname validation (if not a valid full URL or if hostname from URL was invalid)
+    // Allow alphanumeric, hyphens, dots. Disallow leading/trailing dots/hyphens.
+    // Disallow characters that could be problematic: < > " ' & space and other common problematic chars.
+    if (/^[a-zA-Z0-9][a-zA-Z0-9\-\.]{0,253}[a-zA-Z0-9]$/.test(trimmedInput) && !/[<>"'&\s]/.test(trimmedInput)) {
+        // Check for sequences like .. or .-. or -- (though regex might catch some of this)
+        if (trimmedInput.includes('..') || trimmedInput.includes('.-.') || trimmedInput.includes('--')) {
+             warn("(Popup/BlacklistManager): Invalid sequence in direct hostname input:", trimmedInput);
+            return null;
+        }
+        // It looks like a valid hostname structure
+        debug("(Popup/BlacklistManager): Input treated as valid direct hostname:", trimmedInput);
+        return trimmedInput;
+    } else {
+        warn("(Popup/BlacklistManager): Input is not a valid URL or direct hostname:", trimmedInput);
+        return null;
     }
 }
 

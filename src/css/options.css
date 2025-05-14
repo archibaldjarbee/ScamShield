@@ -1,0 +1,206 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f0f2f5;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+
+.container {
+    background-color: #ffffff;
+    padding: 25px 35px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 700px;
+}
+
+h1 {
+    color: #005a9c; /* Dark blue for primary headings */
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 2em;
+}
+
+h2 {
+    color: #007bff; /* Slightly lighter blue for section titles */
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 10px;
+    margin-top: 30px;
+    margin-bottom: 20px;
+    font-size: 1.5em;
+}
+
+.settings-section {
+    margin-bottom: 30px;
+}
+
+.setting-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #f0f2f5; /* Light separator for items */
+}
+
+.setting-item:last-child {
+    border-bottom: none;
+}
+
+.setting-item label {
+    flex-grow: 1;
+    font-weight: 500;
+    margin-right: 15px;
+    color: #495057;
+}
+
+.setting-item input[type="checkbox"] {
+    margin-right: 5px;
+    transform: scale(1.2); /* Make checkbox slightly larger */
+    cursor: pointer;
+}
+
+.setting-item small {
+    flex-basis: 100%;
+    color: #6c757d;
+    font-size: 0.85em;
+    margin-top: 5px;
+    padding-left: calc(1.2em + 20px); /* Align with checkbox approximately */
+    display: block; /* Ensure it takes full width below label/checkbox */
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    body {
+        padding: 10px;
+    }
+    .container {
+        padding: 20px;
+    }
+    h1 {
+        font-size: 1.8em;
+    }
+    h2 {
+        font-size: 1.3em;
+    }
+    .setting-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .setting-item label {
+        margin-bottom: 8px;
+    }
+    .setting-item input[type="checkbox"] {
+        margin-bottom: 8px;
+    }
+    .setting-item small {
+        padding-left: 0;
+    }
+}
+
+/* Input group styling for keyword/blacklist additions */
+.input-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px; /* Add some space below the input group */
+}
+
+.input-group input[type="text"] {
+    flex-grow: 1;
+    padding: 8px 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.95em;
+    margin-right: 10px;
+}
+
+.input-group input[type="text"]:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    outline: none;
+}
+
+.btn {
+    padding: 8px 15px;
+    font-size: 0.95em;
+    font-weight: 500;
+    color: #fff;
+    background-color: #007bff;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.btn:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+}
+
+.btn:disabled {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Status message styling (can be reused) */
+.status-message {
+    font-size: 0.9em;
+    color: #28a745; /* Green for success by default */
+    margin-top: 5px;
+    margin-bottom: 15px;
+    min-height: 1.2em; /* Prevent layout shifts */
+    text-align: left; /* Default alignment */
+}
+
+.status-message.error {
+    color: #dc3545; /* Red for errors */
+}
+
+/* Item list styling (for blacklist and custom keywords) */
+.item-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 10px;
+}
+
+.item-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-size: 0.95em;
+}
+
+.item-list li span {
+    word-break: break-all;
+    margin-right: 10px;
+}
+
+.item-list li .remove-btn {
+    padding: 5px 10px;
+    font-size: 0.85em;
+    color: #fff;
+    background-color: #dc3545; /* Red for remove buttons */
+    border: 1px solid #dc3545;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.item-list li .remove-btn:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+.item-list li .remove-btn:disabled {
+    background-color: #6c757d;
+    border-color: #6c757d;
+} 

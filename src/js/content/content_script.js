@@ -1,3 +1,5 @@
+import { log, warn, error, debug } from '../shared/logger.js';
+
 // Keywords indicating potential scams - **REMOVED, will be fetched from storage**
 // const scamKeywords = [ ... ];
 
@@ -7,15 +9,21 @@ let extensionIsActive = true; // Default to true, will be updated from storage
 // Store a reference to the warning UI if it's visible
 let currentWarningUI = null;
 
+/**
+ * Initializes the content script's understanding of the extension's active status.
+ * Reads from chrome.storage.local, then proceeds to run checks and attach listeners if active.
+ * This function orchestrates the initial activation of content script features based on stored settings.
+ * @async
+ */
 async function initializeContentScriptStatus() {
     try {
         const data = await chrome.storage.local.get(EXTENSION_STATUS_KEY);
         if (data[EXTENSION_STATUS_KEY] !== undefined) {
             extensionIsActive = data[EXTENSION_STATUS_KEY];
         }
-        console.log("Scam Shield (Content Script): Initialized. Active status:", extensionIsActive);
-    } catch (error) {
-        console.error("Scam Shield (Content Script): Error loading status:", error);
+        log("(Content Script): Initialized. Active status:", extensionIsActive);
+    } catch (e) {
+        error("(Content Script): Error loading status:", e);
         extensionIsActive = true; 
     }
 
@@ -31,15 +39,20 @@ async function initializeContentScriptStatus() {
         // Link scanner (L1 for links) is always active if extension is active, 
         // but displayGraduatedWarning itself checks currentWarningUI.
         document.addEventListener('click', linkScannerClickListener, true);
-        console.log("Scam Shield (Content Script): Listeners active.");
+        log("(Content Script): Listeners active.");
     } else {
-        console.log("Scam Shield (Content Script): Extension is inactive. Listeners not attached.");
+        log("(Content Script): Extension is inactive. Listeners not attached.");
     }
 }
 
 // Call initialization
 initializeContentScriptStatus();
 
+/**
+ * Checks if the current page's hostname is in the Scam Shield blacklist.
+ * If it is, displays a Level 3 (Red) graduated warning, taking precedence over other checks.
+ * @async
+ */
 async function checkBlacklist() {
   // This function will only be called if extensionIsActive is true
   const currentHostname = window.location.hostname;
@@ -50,12 +63,20 @@ async function checkBlacklist() {
     if (blacklist.includes(currentHostname)) {
       displayWarningBanner();
     }
-  } catch (error) {
-    console.error("Scam Shield (Content Script): Error checking blacklist:", error);
+  } catch (e) {
+    error("(Content Script): Error checking blacklist:", e);
   }
 }
 
-// NEW: Function to create and display graduated warnings
+/**
+ * Displays a graduated warning UI on the page.
+ * This function creates and injects a modal-like warning overlay.
+ * It ensures only one such warning is visible at a time by managing `currentWarningUI`.
+ * @param {'red'|'orange'|'yellow'} level - The severity level of the warning. Determines visual styling (e.g., border color).
+ * @param {string} title - The title displayed in the warning header.
+ * @param {string} message - The main informational message for the warning. Can include HTML for formatting (e.g., <ul> for lists).
+ * @param {string[]} recommendations - An array of strings, each representing a piece of advice for the user.
+ */
 function displayGraduatedWarning(level, title, message, recommendations) {
     if (currentWarningUI) {
         currentWarningUI.remove(); // Remove any existing warning
@@ -100,8 +121,8 @@ function displayGraduatedWarning(level, title, message, recommendations) {
     });
 
     currentWarningUI.querySelector('#warning-proceed').addEventListener('click', () => {
+        log("User chose to proceed.");
         // For now, just dismisses. Could add a session storage flag to not warn again for this site/session.
-        console.log("Scam Shield: User chose to proceed.");
         currentWarningUI.remove();
         currentWarningUI = null;
     });
@@ -115,6 +136,10 @@ function displayGraduatedWarning(level, title, message, recommendations) {
     injectWarningStyles(); 
 }
 
+/**
+ * Injects the necessary CSS styles for the graduated warning UI into the page's head.
+ * Ensures styles are only injected once by checking for an existing style element with a specific ID.
+ */
 function injectWarningStyles() {
     if (document.getElementById('scam-shield-warning-styles')) return;
 
@@ -204,16 +229,15 @@ function injectWarningStyles() {
     document.head.appendChild(styleSheet);
 }
 
-// Modify existing displayWarningBanner to use the new system
+/**
+ * Displays a specific Level 3 (Red) warning for blacklisted sites.
+ * This is a convenience function that calls displayGraduatedWarning.
+ * @deprecated Prefer calling displayGraduatedWarning directly with appropriate parameters for clarity and future flexibility.
+ */
 function displayWarningBanner() {
-  // This function will now call displayGraduatedWarning
-  // Old banner logic is effectively replaced.
-  if (document.getElementById('scam-shield-graduated-warning')) return; // Already showing a new warning
-
-  // Remove old banner if it somehow still exists (defensive)
+  if (document.getElementById('scam-shield-graduated-warning')) return; 
   const oldBanner = document.getElementById('scam-shield-warning-banner');
   if (oldBanner) oldBanner.remove();
-
   const title = "Known Scam Site Alert";
   const message = "This website is on the Scam Shield blacklist. It is strongly advised to go back and not share any personal information.";
   const recommendations = [
@@ -222,28 +246,40 @@ function displayWarningBanner() {
     "If you have already entered information, monitor your accounts."
   ];
   displayGraduatedWarning('red', title, message, recommendations);
-  console.log("Scam Shield (Content Script): Displayed RED graduated warning for blacklisted site.");
+  log("(Content Script): Displayed RED graduated warning for blacklisted site.");
 }
 
 // --- Keyword-Based Link Scanner and Page Scanner ---
 
-// Function to scan page content for keywords
+/**
+ * Scans the current page's body text for predefined suspicious keywords.
+ * If a keyword is found and no higher-level warning is active (`currentWarningUI` is null),
+ * it displays a Level 1 (Yellow) warning.
+ * @async
+ * @returns {Promise<boolean>} A promise that resolves to true if a warning was shown, false otherwise.
+ */
 async function scanPageContentForKeywords() {
-    if (!extensionIsActive || currentWarningUI) return; // Don't scan if inactive or warning already shown
-
-    console.log("Scam Shield (Content Script): Scanning page content for keywords.");
+    if (!extensionIsActive || currentWarningUI) return false;
+    debug("(Content Script): Scanning page content for keywords.");
     try {
-        const data = await chrome.storage.local.get('scamShieldKeywords');
-        const scamKeywords = data.scamShieldKeywords || [];
-        if (scamKeywords.length === 0) return;
+        const data = await chrome.storage.local.get(['scamShieldKeywords', 'scamShieldCustomKeywords']);
+        const defaultKeywords = data.scamShieldKeywords || [];
+        const customKeywords = data.scamShieldCustomKeywords || [];
+        const combinedKeywords = [...new Set([...defaultKeywords, ...customKeywords])];
+        
+        if (combinedKeywords.length === 0) return false;
 
         const bodyText = document.body.innerText.toLowerCase();
-        // Simple scan for now, could be made more sophisticated
-        // To avoid multiple alerts for same keywords, we can just find the first one.
-        const foundKeyword = scamKeywords.find(keyword => bodyText.includes(keyword.toLowerCase()));
+        const foundKeyword = combinedKeywords.find(keyword => {
+            // Ensure keyword is a string and not empty before calling toLowerCase
+            if (typeof keyword === 'string' && keyword.trim() !== '') {
+                return bodyText.includes(keyword.toLowerCase());
+            }
+            return false;
+        });
 
         if (foundKeyword) {
-            console.log("Scam Shield (Content Script): Keyword '" + foundKeyword + "' found in page content.");
+            log("(Content Script): Keyword '" + foundKeyword + "' found in page content.");
             const title = "Suspicious Content Detected";
             const message = `The page content includes the term "${foundKeyword}", which is sometimes associated with unwanted or deceptive content. Review carefully before interacting.`;
             const recommendations = [
@@ -252,135 +288,144 @@ async function scanPageContentForKeywords() {
                 "If this is unexpected, consider navigating away."
             ];
             displayGraduatedWarning('yellow', title, message, recommendations);
-            return true; // Indicate a warning was shown
+            return true; 
         }
-    } catch (error) {
-        console.error("Scam Shield (Content Script): Error scanning page content:", error);
+    } catch (e) {
+        error("(Content Script): Error scanning page content:", e);
     }
-    return false; // No warning shown
+    return false; 
 }
 
-// Modified linkScannerClickListener
+/**
+ * Event listener for clicks on anchor (<a>) tags.
+ * Scans the link's href and text content for suspicious keywords.
+ * If a keyword is found and no other warning is currently displayed (`currentWarningUI` is null),
+ * it prevents the default navigation, displays a Level 1 (Yellow) warning, and provides options
+ * to proceed to the link or go back.
+ * @async
+ * @param {MouseEvent} event - The click event object.
+ */
 async function linkScannerClickListener(event) {
-  if (!extensionIsActive || currentWarningUI) return; // Don't scan if inactive or warning already shown
-
+  if (!extensionIsActive || currentWarningUI) return;
   const link = event.target.closest('a');
-  if (link && link.href && !link.href.startsWith('javascript:')) { // Ignore javascript: links
+  if (link && link.href && !link.href.startsWith('javascript:')) {
     try {
-        const data = await chrome.storage.local.get('scamShieldKeywords');
-        const scamKeywords = data.scamShieldKeywords || [];
-        if (scamKeywords.length === 0) return;
-        
+        const data = await chrome.storage.local.get(['scamShieldKeywords', 'scamShieldCustomKeywords']);
+        const defaultKeywords = data.scamShieldKeywords || [];
+        const customKeywords = data.scamShieldCustomKeywords || [];
+        const combinedKeywords = [...new Set([...defaultKeywords, ...customKeywords])];
+
+        if (combinedKeywords.length === 0) return;
+
         const href = link.href.toLowerCase();
         const linkText = link.textContent.toLowerCase();
         const combinedText = href + ' ' + linkText;
-        const foundKeyword = scamKeywords.find(keyword => combinedText.includes(keyword.toLowerCase()));
+        const foundKeyword = combinedKeywords.find(keyword => {
+            // Ensure keyword is a string and not empty before calling toLowerCase
+            if (typeof keyword === 'string' && keyword.trim() !== '') {
+                return combinedText.includes(keyword.toLowerCase());
+            }
+            return false;
+        });
 
         if (foundKeyword) {
-            event.preventDefault(); // Prevent navigation only if keyword found
-            console.log("Scam Shield (Content Script): Keyword '" + foundKeyword + "' found in link:", link.href);
+            event.preventDefault(); 
+            debug("(Content Script): Keyword '" + foundKeyword + "' found in link:", link.href);
             const title = "Suspicious Link Detected";
             const message = `This link contains the term "${foundKeyword}" which is sometimes used in phishing or scam attempts. Clicking this link could lead to a malicious website.`;
             const recommendations = [
                 "Do not click this link if you don\'t trust the source.",
-                "Hover over the link to see the full URL (already done by browser, but good reminder).",
+                "Hover over the link to see the full URL.",
                 "If unsure, type the intended website address directly into your browser."
             ];
-            // Override Proceed button for links to actually navigate if chosen
             displayGraduatedWarning('yellow', title, message, recommendations);
-            
-            // Special handling for proceed on link warnings
             if (currentWarningUI) {
                  const proceedButton = currentWarningUI.querySelector('#warning-proceed');
                  if(proceedButton) {
                     const newProceedButton = proceedButton.cloneNode(true);
                     proceedButton.parentNode.replaceChild(newProceedButton, proceedButton);
                     newProceedButton.addEventListener('click', () => {
-                        console.log("Scam Shield: User chose to proceed with link:", link.href);
+                        log("User chose to proceed with link:", link.href);
                         if(currentWarningUI) currentWarningUI.remove();
                         currentWarningUI = null;
-                        window.location.href = link.href; // Navigate
+                        window.location.href = link.href; 
                     });
                  }
             }
         }
-    } catch (error) {
-        console.error("Scam Shield (Content Script): Error in link scanner:", error);
+    } catch (e) {
+        error("(Content Script): Error in link scanner:", e);
     }
   }
 }
 
 // --- Level 2 Risk Factor Detection ---
 
+/**
+ * Analyzes a given URL string for common risk factors such as being an IP address,
+ * having an excessive number of subdomains, or containing too many hyphens.
+ * @param {string} url - The URL string to analyze.
+ * @returns {string[]} An array of strings, where each string describes a detected risk factor. Returns an empty array if no risks are found or if the URL cannot be parsed.
+ */
 function analyzeUrlForRisk(url) {
     const riskFactors = [];
     try {
         const parsedUrl = new URL(url);
         const hostname = parsedUrl.hostname;
-
-        // Check for IP address as hostname
         if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
             riskFactors.push("URL uses an IP address instead of a domain name.");
         }
-
-        // Check for excessive subdomains
         const subdomainParts = hostname.split('.');
-        // Heuristic: if not an IP, and more than 4 parts (e.g., a.b.c.d.com -> 5 parts, d.com -> 2 parts)
         if (subdomainParts.length > 4 && !riskFactors.some(r => r.includes("IP address"))) {
             riskFactors.push("URL has an unusually high number of subdomains.");
         }
-
-        // Check for excessive hyphens in the hostname
         if ((hostname.match(/-/g) || []).length > 3) {
             riskFactors.push("URL contains multiple hyphens, sometimes used for obfuscation.");
         }
-        
-        // Potential future checks:
-        // - Punycode detection (parsedUrl.hostname will be the decoded version)
-        // - Very long hostname
-        // - Keywords in domain itself (e.g., 'login', 'secure', 'bank' combined with others)
-
     } catch (e) {
-        console.warn("Scam Shield (Content Script): Could not parse URL for risk analysis:", url, e);
+        warn("(Content Script): Could not parse URL for risk analysis:", url, e);
     }
     return riskFactors;
 }
 
-// This will be called by initializeContentScriptStatus
+/**
+ * Checks the current page for Level 2 (Orange) warning conditions.
+ * These conditions include a combination of multiple suspicious keywords found on the page
+ * and/or significant risk factors identified in the page's URL.
+ * If conditions are met and no higher-level warning is active, displays an L2 warning.
+ * @async
+ * @returns {Promise<boolean>} A promise that resolves to true if an L2 warning was shown, false otherwise.
+ */
 async function checkForLevel2Warnings() {
-    if (!extensionIsActive || currentWarningUI) return false; // Skip if inactive or warning shown
-
+    if (!extensionIsActive || currentWarningUI) return false; 
     let detectedKeywordsOnPage = new Set();
     let urlRiskFactors = analyzeUrlForRisk(window.location.href);
-
-    // Gather keywords from page content
     try {
-        const data = await chrome.storage.local.get('scamShieldKeywords');
-        const scamKeywords = data.scamShieldKeywords || [];
-        if (scamKeywords.length > 0) {
+        const data = await chrome.storage.local.get(['scamShieldKeywords', 'scamShieldCustomKeywords']);
+        const defaultKeywords = data.scamShieldKeywords || [];
+        const customKeywords = data.scamShieldCustomKeywords || [];
+        const combinedKeywords = [...new Set([...defaultKeywords, ...customKeywords])];
+
+        if (combinedKeywords.length > 0) {
             const bodyText = document.body.innerText.toLowerCase();
-            scamKeywords.forEach(keyword => {
-                if (bodyText.includes(keyword.toLowerCase())) {
+            combinedKeywords.forEach(keyword => {
+                // Ensure keyword is a string and not empty before processing
+                if (typeof keyword === 'string' && keyword.trim() !== '' && bodyText.includes(keyword.toLowerCase())) {
                     detectedKeywordsOnPage.add(keyword);
                 }
             });
         }
-    } catch (error) {
-        console.error("Scam Shield (Content Script): Error gathering keywords for L2 check:", error);
+    } catch (e) {
+        error("(Content Script): Error gathering keywords for L2 check:", e);
     }
-
     const multipleKeywordsFactor = detectedKeywordsOnPage.size > 2;
     let l2Reasons = [];
-
     if (multipleKeywordsFactor) {
         l2Reasons.push(`Multiple suspicious keywords found on page (${Array.from(detectedKeywordsOnPage).slice(0,3).join(', ')}${detectedKeywordsOnPage.size > 3 ? '...' : ''}).`);
     }
     urlRiskFactors.forEach(factor => l2Reasons.push(factor));
-
-    // Trigger L2 warning if at least one URL risk factor AND one keyword, OR multiple keywords AND some URL factor, OR 2+ URL factors
-    // Simplified: if total combined reasons > 1 (e.g. 1 URL risk + 1 keyword group, or 2 URL risks)
     if (l2Reasons.length > 1) { 
-        console.log("Scam Shield (Content Script): Level 2 risk factors detected:", l2Reasons);
+        log("(Content Script): Level 2 risk factors detected:", l2Reasons);
         const title = "Elevated Risk Detected";
         let message = "This page exhibits multiple characteristics often associated with risky or deceptive websites. Details:\n<ul>";
         l2Reasons.forEach(reason => message += `<li>${reason}</li>`);
@@ -391,34 +436,41 @@ async function checkForLevel2Warnings() {
             "Verify the site's legitimacy independently before proceeding."
         ];
         displayGraduatedWarning('orange', title, message, recommendations);
-        return true; // L2 Warning shown
+        return true; 
     }
-    return false; // No L2 warning shown
+    return false; 
 }
 
-// Listener for storage changes to dynamically enable/disable if needed
-chrome.storage.onChanged.addListener(async (changes, namespace) => { // made async
+/**
+ * Listener for changes in `chrome.storage.local`.
+ * Specifically watches for changes to the extension's active status (`EXTENSION_STATUS_KEY`).
+ * Enables or disables content script features (listeners, warnings) dynamically based on the new status.
+ * @async
+ * @param {object} changes - An object where keys are the names of storage items that changed, 
+ *                           and values are `StorageChange` objects describing the change.
+ * @param {string} namespace - The storage area ('local', 'sync', or 'managed') where the change occurred.
+ */
+chrome.storage.onChanged.addListener(async (changes, namespace) => {
     if (namespace === 'local' && changes[EXTENSION_STATUS_KEY]) {
         const newStatus = changes[EXTENSION_STATUS_KEY].newValue;
-        console.log("Scam Shield (Content Script): Detected status change to:", newStatus);
-        
+        log("(Content Script): Detected status change to:", newStatus);
         const oldStatus = extensionIsActive;
         extensionIsActive = newStatus;
-
         if (newStatus === false && oldStatus === true) {
             document.removeEventListener('click', linkScannerClickListener, true);
             if (currentWarningUI) {
                 currentWarningUI.remove();
                 currentWarningUI = null;
             }
-            // Remove old red banner if present (though it should be replaced by new UI)
             const oldBanner = document.getElementById('scam-shield-warning-banner');
             if (oldBanner) oldBanner.remove();
-            console.log("Scam Shield (Content Script): Deactivated features due to status change.");
+            log("(Content Script): Deactivated features due to status change.");
         } else if (newStatus === true && oldStatus === false) {
-            // Re-initialize logic, which includes checks and attaching listeners if no warning is up
             await initializeContentScriptStatus(); 
-            console.log("Scam Shield (Content Script): Re-activated features due to status change.");
+            log("(Content Script): Re-activated features due to status change.");
         }
     }
-}); 
+});
+
+// Add a debug log at the end of the script for loaded confirmation
+debug("(Content Script): Script loaded and initialized event listeners setup (if active)."); 

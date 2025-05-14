@@ -6,9 +6,17 @@ import {
     setBlacklistUrlInputRef
 } from './blacklist_manager.js';
 import { loadInitialStatus, toggleExtensionStatus } from './status_manager.js';
+import { log, debug } from '../shared/logger.js';
 
+/**
+ * Main entry point for the popup script.
+ * Initializes UI elements, loads initial status and blacklist,
+ * and sets up event listeners for user interactions.
+ * @listens DOMContentLoaded
+ */
 document.addEventListener('DOMContentLoaded', async () => {
-    // Cache DOM elements
+    debug("(PopupMain): DOM Content Loaded.");
+
     const elements = {
         reportButton: document.getElementById('report-button'),
         blacklistUl: document.getElementById('blacklist'),
@@ -19,18 +27,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         reportStatusEl: document.getElementById('report-status')
     };
 
-    // Initialize UI module with DOM elements
     initUI(elements);
-    // Pass the input element reference to blacklist_manager
     setBlacklistUrlInputRef(elements.newBlacklistUrlInput);
 
-    // Load initial extension status and update display
     await loadInitialStatus();
-
-    // Load and render the blacklist
     await refreshBlacklistDisplay();
 
-    // Event Listeners
     if (elements.addToBlacklistBtn && elements.newBlacklistUrlInput) {
         elements.addToBlacklistBtn.addEventListener('click', async () => {
             const urlToAdd = elements.newBlacklistUrlInput.value.trim();
@@ -60,25 +62,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (hostnameToReport) {
                 await addUrlToBlacklist(hostnameToReport);
             }
-            // addUrlToBlacklist or reportCurrentTabHostname will show messages
-            setTimeout(() => { elements.reportButton.disabled = false; }, 1500);
+            setTimeout(() => { 
+                if (elements.reportButton) elements.reportButton.disabled = false; 
+            }, 1500);
         });
     }
     
-    // Event listener for the status indicator to toggle status (example)
-    if (elements.statusIndicator) {
+    if (elements.statusIndicator && elements.statusTextEl) {
         elements.statusIndicator.addEventListener('click', async () => {
             await toggleExtensionStatus();
-            // Potentially refresh other UI parts if status affects them
         });
-        // Make status clickable by adding a cursor style
         elements.statusIndicator.style.cursor = 'pointer';
         elements.statusTextEl.style.cursor = 'pointer'; 
         elements.statusTextEl.addEventListener('click', async () => {
              await toggleExtensionStatus();
         });
-
     }
 
-    console.log("Scam Shield Popup Initialized");
+    log("Popup Initialized");
 }); 

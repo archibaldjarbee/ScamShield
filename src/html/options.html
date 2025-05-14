@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scam Shield Options</title>
+    <link rel="stylesheet" href="../css/options.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Scam Shield Settings</h1>
+
+        <section class="settings-section">
+            <h2>Developer Settings</h2>
+            <div class="setting-item">
+                <label for="debugModeToggle">Enable Debug Mode:</label>
+                <input type="checkbox" id="debugModeToggle" name="debugModeToggle">
+                <small>Logs detailed diagnostic information to the console.</small>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h2>Custom Keyword Management</h2>
+            <div class="setting-item input-group">
+                <label for="customKeywordInput">Add New Keyword:</label>
+                <input type="text" id="customKeywordInput" name="customKeywordInput" placeholder="e.g., free money">
+                <button id="addCustomKeywordBtn" class="btn">Add Keyword</button>
+            </div>
+            <div id="customKeywordStatus" class="status-message"></div>
+            <h3>Your Custom Keywords:</h3>
+            <ul id="customKeywordList" class="item-list"></ul>
+        </section>
+
+        <!-- More settings can be added here in the future -->
+
+    </div>
+    <script src="../js/options/options_main.js" type="module"></script>
+</body>
+</html> 

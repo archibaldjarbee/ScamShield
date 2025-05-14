@@ -1,7 +1,25 @@
 import { log, warn, error, debug } from '../shared/logger.js';
+import * as apiCache from './apiCache.js';
+import * as phishTankClient from './phishtankClient.js';
+import * as safeBrowsingClient from './safeBrowsingClient.js';
+import * as virusTotalClient from './virusTotalClient.js';
 
 const EXTENSION_STATUS_KEY = 'scamShieldActiveStatus';
 let isExtensionCurrentlyActive = true; // Local cache in background
+
+// API Weights for unified score
+const API_WEIGHTS = {
+    PHISHTANK: 0.30,
+    SAFE_BROWSING: 0.35,
+    VIRUSTOTAL: 0.35
+};
+
+// Severity Tiers
+const SEVERITY_THRESHOLDS = {
+    LOW: 0.3,       // Score > 0.3
+    MEDIUM: 0.6,    // Score > 0.6
+    HIGH: 0.8       // Score > 0.8
+};
 
 /**
  * Initializes the background script's understanding of the extension's active status.
@@ -121,20 +139,228 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         isExtensionCurrentlyActive = message.active;
         log("(Background): Received status update. Now:", isExtensionCurrentlyActive);
         sendResponse({ success: true, message: "Status received by background" });
+    } else if (message.type === 'REQUEST_URL_CHECK') {
+        // This might be triggered by a content script that can't make cross-origin requests
+        // or from the popup for a manual check.
+        log(`(Background): Received REQUEST_URL_CHECK for ${message.url} from tab ${sender.tab?.id}`);
+        if (message.url && sender.tab?.id) {
+            checkUrlThreats(message.url, sender.tab.id)
+                .then(result => sendResponse({ success: true, result }))
+                .catch(err => {
+                    error(`(Background): Error processing REQUEST_URL_CHECK:`, err);
+                    sendResponse({ success: false, error: err.message });
+                });
+            return true; // Indicates asynchronous response
+        } else {
+            sendResponse({ success: false, error: "URL or tab ID missing in REQUEST_URL_CHECK" });
+        }
     }
-    // To make it clearer for future message types, ensure to return true only if sendResponse is async.
-    // For this synchronous response, returning true is okay but not strictly necessary for this single message type.
+    // Return true if sendResponse will be called asynchronously.
     return true; 
 });
 
-// Example debug log
-debug("(Background): Service worker script loaded and initialized.");
+/**
+ * Normalizes an API result to a 0-1 score.
+ * @param {string} source - The API source (e.g., 'PHISHTANK').
+ * @param {object} result - The result object from the API client.
+ * @returns {number} A score between 0 and 1.
+ */
+function normalizeScore(source, result) {
+    if (!result || result.error) return 0; // No score if error or no result
 
-// Example of how the background might use this status
-// This is just for demonstration; actual use would be integrated into existing/new background tasks.
-// chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-//   if (isExtensionCurrentlyActive && changeInfo.status === 'complete' && tab.url) {
-//     console.log("Scam Shield (Background): Extension is active. Would process tab:", tab.url);
-//     // Potentially inject content script or perform checks if not done by manifest or if finer control is needed.
-//   }
-// }); 
+    switch (source) {
+        case 'PHISHTANK':
+            // PhishTank: isPhishing (boolean)
+            return result.isPhishing ? 1 : 0;
+        case 'SAFE_BROWSING':
+            // Google Safe Browsing: isMalicious (boolean based on threats)
+            return result.isMalicious ? 1 : 0; // Could be refined based on threat types
+        case 'VIRUSTOTAL':
+            // VirusTotal: score (already 0-1 from positives/total)
+            return result.score || 0;
+        default:
+            return 0;
+    }
+}
+
+/**
+ * Determines the severity level based on the unified score.
+ * @param {number} score - The unified threat score (0-1).
+ * @returns {string} Severity level ('NONE', 'LOW', 'MEDIUM', 'HIGH').
+ */
+function getSeverity(score) {
+    if (score >= SEVERITY_THRESHOLDS.HIGH) return 'HIGH';
+    if (score >= SEVERITY_THRESHOLDS.MEDIUM) return 'MEDIUM';
+    if (score >= SEVERITY_THRESHOLDS.LOW) return 'LOW';
+    return 'NONE'; // Or 'SAFE'
+}
+
+/**
+ * Main function to check a URL against all configured threat intelligence APIs.
+ * @param {string} url - The URL to check.
+ * @param {number} tabId - The ID of the tab where the URL is being checked.
+ */
+async function checkUrlThreats(url, tabId) {
+    if (!isExtensionCurrentlyActive) {
+        log(`(Background) Extension is inactive. Skipping threat check for ${url}`);
+        return;
+    }
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+        log(`(Background) Invalid or non-HTTP(S) URL. Skipping threat check for ${url}`);
+        return;
+    }
+
+    log(`(Background) Initiating threat check for URL: ${url} in tab ${tabId}`);
+
+    let unifiedScore = 0;
+    const sourceResults = {};
+    let anySourceReportedThreat = false;
+
+    // 1. PhishTank
+    try {
+        let phishTankResult = await apiCache.getCachedResponse('phishtank', url);
+        if (!phishTankResult) {
+            debug(`(Background) PhishTank cache miss for ${url}. Fetching from API.`);
+            phishTankResult = await phishTankClient.checkPhishTank(url);
+            if (phishTankResult && !phishTankResult.error) {
+                await apiCache.setCachedResponse('phishtank', url, phishTankResult, apiCache.TTL_PHISHTANK);
+            }
+        } else {
+            debug(`(Background) PhishTank cache hit for ${url}.`);
+        }
+        sourceResults.phishtank = phishTankResult;
+        const phishTankScore = normalizeScore('PHISHTANK', phishTankResult);
+        if (phishTankScore > 0) anySourceReportedThreat = true;
+        unifiedScore += phishTankScore * API_WEIGHTS.PHISHTANK;
+        log(`(Background) PhishTank check for ${url}: Score=${phishTankScore}, Result:`, phishTankResult);
+    } catch (e) {
+        error(`(Background) Error checking PhishTank for ${url}:`, e);
+        sourceResults.phishtank = { error: e.message };
+    }
+
+    // 2. Google Safe Browsing
+    try {
+        let safeBrowsingResult = await apiCache.getCachedResponse('safebrowsing', url);
+        if (!safeBrowsingResult) {
+            debug(`(Background) Safe Browsing cache miss for ${url}. Fetching from API.`);
+            safeBrowsingResult = await safeBrowsingClient.checkGoogleSafeBrowsing(url);
+            if (safeBrowsingResult && !safeBrowsingResult.error) {
+                await apiCache.setCachedResponse('safebrowsing', url, safeBrowsingResult, apiCache.TTL_SAFE_BROWSING);
+            }
+        } else {
+            debug(`(Background) Safe Browsing cache hit for ${url}.`);
+        }
+        sourceResults.safeBrowsing = safeBrowsingResult;
+        const safeBrowsingScore = normalizeScore('SAFE_BROWSING', safeBrowsingResult);
+        if (safeBrowsingScore > 0) anySourceReportedThreat = true;
+        unifiedScore += safeBrowsingScore * API_WEIGHTS.SAFE_BROWSING;
+        log(`(Background) Safe Browsing check for ${url}: Score=${safeBrowsingScore}, Result:`, safeBrowsingResult);
+    } catch (e) {
+        error(`(Background) Error checking Safe Browsing for ${url}:`, e);
+        sourceResults.safeBrowsing = { error: e.message };
+    }
+
+    // 3. VirusTotal
+    try {
+        let virusTotalResult = await apiCache.getCachedResponse('virustotal', url);
+        if (!virusTotalResult) {
+            debug(`(Background) VirusTotal cache miss for ${url}. Fetching from API.`);
+            virusTotalResult = await virusTotalClient.checkVirusTotal(url);
+            if (virusTotalResult && !virusTotalResult.error) {
+                await apiCache.setCachedResponse('virustotal', url, virusTotalResult, apiCache.TTL_VIRUSTOTAL);
+            }
+        } else {
+            debug(`(Background) VirusTotal cache hit for ${url}.`);
+        }
+        sourceResults.virusTotal = virusTotalResult;
+        const virusTotalScore = normalizeScore('VIRUSTOTAL', virusTotalResult);
+        if (virusTotalScore > 0) anySourceReportedThreat = true;
+        unifiedScore += virusTotalScore * API_WEIGHTS.VIRUSTOTAL;
+        log(`(Background) VirusTotal check for ${url}: Score=${virusTotalScore}, Result:`, virusTotalResult);
+    } catch (e) {
+        error(`(Background) Error checking VirusTotal for ${url}:`, e);
+        sourceResults.virusTotal = { error: e.message };
+    }
+    
+    // Ensure score is capped at 1
+    unifiedScore = Math.min(unifiedScore, 1);
+
+    const severity = getSeverity(unifiedScore);
+    const threatDetails = {
+        url: url,
+        unifiedScore: unifiedScore,
+        severity: severity,
+        anySourceReportedThreat: anySourceReportedThreat,
+        sources: sourceResults,
+        timestamp: new Date().toISOString()
+    };
+
+    log(`(Background) Threat check complete for ${url}: Unified Score = ${unifiedScore}, Severity = ${severity}`, threatDetails);
+
+    // TODO: Implement resiliency & fallbacks more explicitly if all primary APIs fail.
+    // For now, errors are logged, and scoring proceeds with available data.
+    // Fallback could involve using stale cache or local blacklist/keyword checks if unifiedScore is 0 and errors occurred.
+
+    if (anySourceReportedThreat || severity !== 'NONE') {
+        // Send message to content script to display a warning
+        chrome.tabs.sendMessage(tabId, {
+            type: "SHOW_WARNING_BANNER",
+            details: threatDetails
+        }).catch(e => {
+            // This can happen if the content script isn't ready or the tab is closed.
+            // Or if the tab is a special page (e.g., chrome://) where content scripts don't run.
+            if (e.message.includes("Could not establish connection") || e.message.includes("No matching signature")) {
+                 warn(`(Background) Could not send warning to tab ${tabId} for ${url}. Content script might not be injected or tab closed.`);
+            } else {
+                error(`(Background) Error sending warning to content script for tab ${tabId} (${url}):`, e);
+            }
+        });
+        // Update icon to indicate a threat
+        chrome.action.setIcon({
+            path: {
+                "16": "/src/assets/logo/logo-warning-16.png",
+                "32": "/src/assets/logo/logo-warning-32.png"
+            },
+            tabId: tabId
+        });
+
+    } else {
+         // Reset icon if site is deemed safe by APIs
+        chrome.action.setIcon({
+            path: {
+                "16": "/src/assets/logo/logo-16.png",
+                "32": "/src/assets/logo/logo-32.png"
+            },
+            tabId: tabId
+        });
+    }
+    return threatDetails; // Return details for potential use by caller (e.g. manual check)
+}
+
+// Listener for tab updates to trigger URL checks
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Check if the extension is active and the tab has finished loading and has a URL
+    if (isExtensionCurrentlyActive && changeInfo.status === 'complete' && tab.url) {
+        // Avoid checking chrome://, about:, file://, etc. URLs
+        if (tab.url.startsWith('http://') || tab.url.startsWith('https://')) {
+            log(`(Background) Tab ${tabId} updated to ${tab.url}, status: ${changeInfo.status}. Triggering threat check.`);
+            checkUrlThreats(tab.url, tabId).catch(e => {
+                error(`(Background) Unhandled error during onUpdated check for ${tab.url}:`, e);
+            });
+        } else {
+            debug(`(Background) Tab ${tabId} updated to non-http(s) URL: ${tab.url}. Skipping API checks.`);
+        }
+    }
+});
+
+// Example debug log
+debug("(Background): Service worker script loaded and advanced threat detection initialized.");
+
+// TODO: Implement exponential backoff for API retries.
+// TODO: Implement more robust offline mode behavior.
+// TODO: Add UI in options page for managing API keys.
+// TODO: Add alternative feeds (OpenPhish, URLhaus) as fallbacks - would require new client modules.
+
+// Ensure warning icons are specified in manifest.json web_accessible_resources if not already
+// "src/assets/logo/logo-warning-16.png",
+// "src/assets/logo/logo-warning-32.png" 

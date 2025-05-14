@@ -16,19 +16,10 @@
         <span id="statusText">Active</span> 
       </div>
       
-      <div class="blacklist-section">
-        <h2>Manage Blacklist</h2>
-        <div class="blacklist-controls">
-          <input type="text" id="newBlacklistUrl" placeholder="Enter URL to blacklist">
-          <button id="addToBlacklistBtn">Add</button>
-        </div>
-        <ul id="blacklist">
-          <!-- Blacklisted sites will be dynamically added here -->
-        </ul>
-      </div>
-
-      <button id="report-button">Report Current Site</button>
+      <button id="report-button" class="btn-popup">Report Current Site</button>
       <div id="report-status"></div>
+
+      <button id="openOptionsPageBtn" class="btn-popup">Open Settings</button>
 
     </div>
     <script type="module" src="../js/popup/popup_main.js"></script>

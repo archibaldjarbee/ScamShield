@@ -48,6 +48,76 @@ async function initializeContentScriptStatus() {
 // Call initialization
 initializeContentScriptStatus();
 
+// Add listener for messages from the background script (service worker)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    log("(Content Script) Received message:", message);
+    if (message.type === "SHOW_WARNING_BANNER") {
+        if (!extensionIsActive) {
+            log("(Content Script) Extension is not active, not showing API-based warning banner.");
+            return;
+        }
+        const { details } = message;
+        let level = 'yellow'; // Default for LOW
+        if (details.severity === 'HIGH') level = 'red';
+        else if (details.severity === 'MEDIUM') level = 'orange';
+
+        let title = `Potential Threat Detected (${details.severity})`;
+        if (details.severity === 'NONE' && details.anySourceReportedThreat) {
+             // This case might occur if the score is low but one source was positive.
+             // Or if we want to inform about a specific finding even if overall score is low.
+            title = "Security Alert";
+            level = 'yellow'; // Ensure it's at least yellow if any source reported a threat
+        }
+
+        // Construct a more detailed message
+        let apiMessage = `Scam Shield analysis for <strong style="word-break: break-all;">${details.url}</strong> (Score: ${details.unifiedScore.toFixed(2)}):<br>`;
+        
+        const contributingSources = [];
+        for (const sourceKey in details.sources) {
+            const sourceResult = details.sources[sourceKey];
+            if (sourceResult && !sourceResult.error) {
+                let contributed = false;
+                if (sourceKey === 'phishtank' && sourceResult.isPhishing) {
+                    apiMessage += `- PhishTank: Reported as phishing.<br>`;
+                    contributed = true;
+                }
+                if (sourceKey === 'safeBrowsing' && sourceResult.isMalicious && sourceResult.threats) {
+                    apiMessage += `- Google Safe Browsing: Found threats (${sourceResult.threats.join(', ')}).<br>`;
+                    contributed = true;
+                }
+                if (sourceKey === 'virusTotal' && sourceResult.isMalicious && sourceResult.positives !== null) {
+                    apiMessage += `- VirusTotal: ${sourceResult.positives}/${sourceResult.total} engines flagged as malicious/suspicious.<br>`;
+                    contributed = true;
+                }
+                if (contributed) contributingSources.push(sourceKey);
+            }
+        }
+
+        if (contributingSources.length === 0 && details.anySourceReportedThreat) {
+            apiMessage += "One or more security sources reported a potential issue not detailed above.<br>";
+        }
+        if (contributingSources.length === 0 && !details.anySourceReportedThreat && details.severity !== 'NONE') {
+            apiMessage += "Multiple signals suggest caution, though no single source confirmed a specific threat.<br>";
+        }
+        if (details.severity === 'NONE' && !details.anySourceReportedThreat) {
+            // This should ideally not happen if the service worker only sends messages for threats.
+            // But as a safeguard:
+            log("(Content Script) SHOW_WARNING_BANNER received for severity NONE and no source threats. Ignoring.");
+            return; 
+        }
+
+        const recommendations = [
+            "Verify the website address (URL) is correct.",
+            "Do not enter sensitive information if you are unsure.",
+            "If in doubt, close the page or navigate to a known safe site."
+        ];
+
+        displayGraduatedWarning(level, title, apiMessage, recommendations);
+        sendResponse({ success: true, message: "Banner displayed" });
+    }
+    return true; // Keep channel open for async response if needed in other handlers
+});
+
 /**
  * Checks if the current page's hostname is in the Scam Shield blacklist.
  * If it is, displays a Level 3 (Red) graduated warning, taking precedence over other checks.

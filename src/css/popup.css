@@ -42,6 +42,10 @@ h1 {
   transition: background-color 0.3s ease-in-out;
 }
 
+.status-indicator.active {
+  background-color: #4CAF50; /* Green for active */
+}
+
 .status-indicator.inactive {
   background-color: #f44336; /* Red for inactive */
 }
@@ -165,4 +169,212 @@ h1 {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Analysis Section Styles */
+.analysis-section {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+#analysis-content p {
+  margin: 5px 0;
+  font-size: 0.9em;
+}
+
+#analysis-url {
+  font-weight: bold;
+  word-break: break-all; /* For long URLs */
+}
+
+.score-bar-container {
+  width: 100%;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  height: 10px;
+  margin: 8px 0;
+}
+
+#analysis-score-bar {
+  height: 100%;
+  width: 0%; /* Default to 0% */
+  background-color: #ddd; /* Default color */
+  border-radius: 4px;
+  transition: width 0.5s ease-in-out, background-color 0.5s ease-in-out;
+}
+
+#analysis-severity {
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.85em;
+  margin-left: 5px;
+}
+
+.severity-none, .severity-info {
+  background-color: #4CAF50; /* Green */
+  color: white;
+}
+.severity-low {
+  background-color: #ffc107; /* Yellow */
+  color: #333;
+}
+.severity-medium {
+  background-color: #ff9800; /* Orange */
+  color: white;
+}
+.severity-high {
+  background-color: #cc0000; /* Red */
+  color: white;
+}
+.severity-error {
+    background-color: #777;
+    color: white;
+}
+
+.details-box {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 5px;
+  font-size: 0.85em;
+  max-height: 150px; /* Limit height and make scrollable if needed */
+  overflow-y: auto;
+}
+
+.details-box .source-detail {
+    margin-bottom: 5px;
+    padding-bottom: 3px;
+    border-bottom: 1px dotted #ddd;
+}
+.details-box .source-detail:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.details-box .text-danger {
+    color: #cc0000; /* Red for danger text */
+    font-weight: bold;
+}
+.details-box .text-error {
+    color: #ff6347; /* Tomato for error messages */
+    font-style: italic;
+}
+
+.timestamp {
+  margin-top: 10px;
+  font-size: 0.8em;
+  color: #666;
+  text-align: right;
+}
+
+#refreshAnalysisBtn {
+    margin-top: 10px;
+    padding: 6px 10px;
+    font-size: 0.9em;
+}
+
+#analysis-status-message {
+    font-size: 0.85em;
+    color: #555;
+    margin-top: 5px;
+    min-height: 1.2em; /* Reserve space */
+}
+
+/* General Popup Button Styling */
+.btn-popup {
+  display: block; /* Make buttons take full width */
+  width: 100%;
+  padding: 10px 15px;
+  font-size: 1em;
+  font-weight: 500;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  margin-bottom: 10px; /* Add some space between buttons */
+  box-sizing: border-box; /* Ensure padding and border are included in the element's total width and height */
+}
+
+.btn-popup:last-child {
+  margin-bottom: 0; /* No margin for the last button */
+}
+
+/* Report Button Style */
+#report-button {
+  background-color: #e74c3c; /* A slightly softer red for reporting */
+  color: white;
+  border-color: #e74c3c;
+}
+
+#report-button:hover {
+  background-color: #c0392b; /* Darker red on hover */
+  border-color: #c0392b;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#report-button:active {
+  background-color: #a93226; /* Even darker red on active */
+}
+
+/* Open Settings Button Style */
+#openOptionsPageBtn {
+  background-color: #3498db; /* A pleasant blue */
+  color: white;
+  border-color: #3498db;
+}
+
+#openOptionsPageBtn:hover {
+  background-color: #2980b9; /* Darker blue on hover */
+  border-color: #2980b9;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#openOptionsPageBtn:active {
+  background-color: #2471a3; /* Even darker blue on active */
+}
+
+/* Optional: If you want a more subtle settings button (e.g., outline) */
+/*
+#openOptionsPageBtn {
+  background-color: transparent;
+  color: #3498db; 
+  border: 1px solid #3498db;
+}
+#openOptionsPageBtn:hover {
+  background-color: #3498db;
+  color: white;
+  border-color: #3498db;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+#openOptionsPageBtn:active {
+  background-color: #2980b9;
+  border-color: #2980b9;
+  color: white;
+}
+*/
+
+#report-status {
+  font-size: 0.85em;
+  padding: 8px;
+  margin-top: 5px; /* Add some space above */
+  text-align: center;
+  border-radius: 4px;
+  display: none; /* Hidden by default, shown by JS */
+}
+
+#report-status.success {
+    background-color: #e6ffed; /* Light green */
+    color: #006327;
+    border: 1px solid #a3e0b8;
+}
+
+#report-status.error {
+    background-color: #ffebee; /* Light red */
+    color: #c62828;
+    border: 1px solid #f7caca;
 } 

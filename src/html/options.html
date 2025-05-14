@@ -10,13 +10,34 @@
     <div class="container">
         <h1>Scam Shield Settings</h1>
 
-        <section class="settings-section">
-            <h2>Developer Settings</h2>
-            <div class="setting-item">
-                <label for="debugModeToggle">Enable Debug Mode:</label>
-                <input type="checkbox" id="debugModeToggle" name="debugModeToggle">
-                <small>Logs detailed diagnostic information to the console.</small>
+        <section class="settings-section" id="analysis-section-options">
+            <h2>Current Page Analysis</h2>
+            <div id="analysis-content-options">
+              <p><strong>URL:</strong> <span id="analysis-url-options">N/A</span></p>
+              <p><strong>Overall Score:</strong> <span id="analysis-score-options">N/A</span> <span id="analysis-severity-options"></span></p>
+              <div class="score-bar-container-options">
+                <div id="analysis-score-bar-options"></div>
+              </div>
+              <p><strong>Details:</strong></p>
+              <div id="analysis-details-breakdown-options" class="details-box-options">
+                <p><em>Click "Refresh Analysis" to check the currently active tab.</em></p>
+              </div>
+              <p class="timestamp-options"><small>Last updated: <span id="analysis-timestamp-options">N/A</span></small></p>
             </div>
+            <button id="refreshAnalysisBtnOptions" class="btn">Refresh Analysis</button>
+            <div id="analysis-status-message-options" class="status-message"></div>
+        </section>
+
+        <section class="settings-section" id="blacklist-section-options">
+            <h2>Manage Blacklist</h2>
+            <div class="setting-item input-group">
+                <label for="newBlacklistUrlOptions">Add URL to Blacklist:</label>
+                <input type="text" id="newBlacklistUrlOptions" name="newBlacklistUrlOptions" placeholder="Enter domain (e.g., example.com)">
+                <button id="addToBlacklistBtnOptions" class="btn">Add to Blacklist</button>
+            </div>
+            <div id="blacklistStatusOptions" class="status-message"></div>
+            <h3>Your Blacklisted Sites:</h3>
+            <ul id="blacklistOptionsList" class="item-list"></ul>
         </section>
 
         <section class="settings-section">
@@ -29,6 +50,15 @@
             <div id="customKeywordStatus" class="status-message"></div>
             <h3>Your Custom Keywords:</h3>
             <ul id="customKeywordList" class="item-list"></ul>
+        </section>
+
+        <section class="settings-section">
+            <h2>Developer Settings</h2>
+            <div class="setting-item">
+                <label for="debugModeToggle">Enable Debug Mode:</label>
+                <input type="checkbox" id="debugModeToggle" name="debugModeToggle">
+                <small>Logs detailed diagnostic information to the console.</small>
+            </div>
         </section>
 
         <!-- More settings can be added here in the future -->

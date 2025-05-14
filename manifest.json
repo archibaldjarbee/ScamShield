@@ -46,7 +46,9 @@
         "src/assets/logo/logo-16.png",
         "src/assets/logo/logo-32.png",
         "src/assets/logo/logo-48.png",
-        "src/assets/logo/logo-128.png"
+        "src/assets/logo/logo-128.png",
+        "src/assets/logo/logo-warning-16.png",
+        "src/assets/logo/logo-warning-32.png"
       ],
       "matches": ["<all_urls>"]
     }

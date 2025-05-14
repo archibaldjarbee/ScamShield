@@ -56,9 +56,11 @@ async function fetchWithBackoff(url, options, retryCount = 0) {
 export async function checkVirusTotal(urlToCheck) {
     log(`(VirusTotal) Checking URL: ${urlToCheck}`);
 
-    if (!VIRUSTOTAL_API_KEY || VIRUSTOTAL_API_KEY === '19329d70550bfee1690e161333ef4d0ae6d2fb1d4d7180a1847afcf67ceb5c01') {
-        warn("(VirusTotal) API key not configured. Skipping check.");
-        return { isMalicious: false, score: null, positives: null, total: null, details: null, error: "API key not configured" };
+    // A more generic placeholder check
+    const genericPlaceholderPattern = /YOUR_API_KEY|ENTER_API_KEY|YOUR_VT_KEY/i; // Common placeholder patterns
+    if (!VIRUSTOTAL_API_KEY || VIRUSTOTAL_API_KEY.length < 64 || genericPlaceholderPattern.test(VIRUSTOTAL_API_KEY)) {
+        warn("(VirusTotal) API key appears to be a placeholder, empty, or invalid (too short). Skipping check.");
+        return { isMalicious: false, score: null, positives: null, total: null, details: null, error: "API key not configured or is a placeholder" };
     }
 
     // VirusTotal API v3 uses the URL itself (SHA256 hash of it, or simply the URL ID which is base64 encoded URL) for retrieval.

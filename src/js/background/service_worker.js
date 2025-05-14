@@ -339,6 +339,15 @@ async function checkUrlThreats(url, tabId) {
 
 // Listener for tab updates to trigger URL checks
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Minimal test log to see if the listener fires AT ALL (KEEP THIS FOR NOW)
+    console.log('[Scam Shield - SW onUpdated Test] Event Fired:', tabId, changeInfo, tab);
+    debug('(Background) [TEST] onUpdated event fired.', { tabId, status: changeInfo.status, url: tab ? tab.url : 'No tab object' });
+
+    // Restore original logic below
+    // Enhanced logging to debug why API checks might not be triggering
+    // The debug log below is similar to the [TEST] one, can be removed if [TEST] is kept, or kept for more detail.
+    debug(`(Background) onUpdated event (full details): TabID=${tabId}, Status=${changeInfo.status}, URL=${tab.url}`, changeInfo, tab);
+
     // Check if the extension is active and the tab has finished loading and has a URL
     if (isExtensionCurrentlyActive && changeInfo.status === 'complete' && tab.url) {
         // Avoid checking chrome://, about:, file://, etc. URLs
@@ -350,6 +359,19 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         } else {
             debug(`(Background) Tab ${tabId} updated to non-http(s) URL: ${tab.url}. Skipping API checks.`);
         }
+    } else {
+        // Log why the main condition was not met (if status is 'complete' but other parts fail)
+        if (changeInfo.status === 'complete') { // Only log these specific failures if status was already complete
+            if (!tab.url) {
+                debug(`(Background) onUpdated: Tab.url is not set for TabID=${tabId} when status is complete.`);
+            } else if (!isExtensionCurrentlyActive) {
+                debug(`(Background) onUpdated: Extension is not active when status is complete. TabID=${tabId}`);
+            }
+        } 
+        // Optional: log for other statuses if needed, but can be noisy
+        // else { 
+        //    debug(`(Background) onUpdated: Main conditions not met. Status: ${changeInfo.status}, URL: ${tab.url}, Active: ${isExtensionCurrentlyActive}`);
+        // }
     }
 });
 

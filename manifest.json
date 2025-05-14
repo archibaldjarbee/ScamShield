@@ -14,13 +14,13 @@
     "default_popup": "src/html/popup.html"
   },
   "background": {
-    "service_worker": "src/js/background.js",
+    "service_worker": "src/js/background/service_worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/js/content.js"],
+      "js": ["src/js/content/content_script.js"],
       "run_at": "document_idle"
     }
   ],

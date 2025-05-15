@@ -5,7 +5,7 @@ const LOG_PREFIX = 'Scam Shield:';
  * @param {...any} args - Arguments to log.
  */
 export function log(...args) {
-    console.log(LOG_PREFIX, ...args);
+    console.log('[ScamShield]', ...args);
 }
 
 /**
@@ -13,7 +13,7 @@ export function log(...args) {
  * @param {...any} args - Arguments to log as a warning.
  */
 export function warn(...args) {
-    console.warn(LOG_PREFIX, ...args);
+    console.warn('[ScamShield]', ...args);
 }
 
 /**
@@ -21,7 +21,7 @@ export function warn(...args) {
  * @param {...any} args - Arguments to log as an error.
  */
 export function error(...args) {
-    console.error(LOG_PREFIX, ...args);
+    console.error('[ScamShield]', ...args);
 }
 
 let _debugMode = false; // Default to false
@@ -48,9 +48,9 @@ let _debugMode = false; // Default to false
  * @param {...any} args - Arguments to log as a debug message.
  */
 export function debug(...args) {
-    if (_debugMode) {
-        console.debug(LOG_PREFIX, '[DEBUG]', ...args);
-    }
+    // In production, you might want to disable debug logs or make them conditional
+    // For now, let's keep them enabled.
+    console.debug('[ScamShield]', ...args);
 }
 
 // Example of how to potentially make DEBUG_MODE configurable via storage:

@@ -3,6 +3,7 @@ import * as apiCache from './apiCache.js';
 import * as phishTankClient from './phishtankClient.js';
 import * as safeBrowsingClient from './safeBrowsingClient.js';
 import * as virusTotalClient from './virusTotalClient.js';
+import * as aiEngine from './aiEngine.js';
 
 const EXTENSION_STATUS_KEY = 'scamShieldActiveStatus';
 let isExtensionCurrentlyActive = true; // Local cache in background
@@ -10,8 +11,10 @@ let isExtensionCurrentlyActive = true; // Local cache in background
 // API Weights for unified score
 const API_WEIGHTS = {
     PHISHTANK: 0.30,
-    SAFE_BROWSING: 0.35,
-    VIRUSTOTAL: 0.35
+    SAFE_BROWSING: 0.30,
+    VIRUSTOTAL: 0.30,
+    AI_ENGINE: 0.40,
+    NLP_CONTENT: 0.25
 };
 
 // Severity Tiers
@@ -128,7 +131,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 /**
  * Listener for messages from other parts of the extension (e.g., popup).
- * Handles EXTENSION_STATUS_TOGGLED messages to update the background's active status.
+ * Handles EXTENSION_STATUS_TOGGLED, REQUEST_URL_CHECK, and PAGE_CONTENT_FOR_ANALYSIS messages.
  * @param {object} message - The message object sent.
  * @param {chrome.runtime.MessageSender} sender - Information about the script that sent the message.
  * @param {function} sendResponse - Function to call to send a response back to the message sender.
@@ -140,11 +143,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         log("(Background): Received status update. Now:", isExtensionCurrentlyActive);
         sendResponse({ success: true, message: "Status received by background" });
     } else if (message.type === 'REQUEST_URL_CHECK') {
-        // This might be triggered by a content script that can't make cross-origin requests
-        // or from the popup for a manual check.
-        log(`(Background): Received REQUEST_URL_CHECK for ${message.url} from tab ${sender.tab?.id}`);
-        if (message.url && sender.tab?.id) {
-            checkUrlThreats(message.url, sender.tab.id)
+        log(`(Background): Received REQUEST_URL_CHECK for ${message.url} from tab ${message.tabId || sender.tab?.id}`);
+        const tabIdForCheck = message.tabId || sender.tab?.id;
+        if (message.url && tabIdForCheck) {
+            checkUrlThreats(message.url, tabIdForCheck, null)
                 .then(result => sendResponse({ success: true, result }))
                 .catch(err => {
                     error(`(Background): Error processing REQUEST_URL_CHECK:`, err);
@@ -152,7 +154,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
             return true; // Indicates asynchronous response
         } else {
-            sendResponse({ success: false, error: "URL or tab ID missing in REQUEST_URL_CHECK" });
+            warn(`(Background): REQUEST_URL_CHECK missing URL or a valid tabId. URL: ${message.url}, message.tabId: ${message.tabId}, sender.tab?.id: ${sender.tab?.id}.`);
+            sendResponse({ success: false, error: "URL or tab ID missing/invalid in REQUEST_URL_CHECK" });
+        }
+    } else if (message.type === 'PAGE_CONTENT_FOR_ANALYSIS') {
+        log(`(Background): Received PAGE_CONTENT_FOR_ANALYSIS for ${message.url} from tab ${sender.tab?.id}. Text length: ${message.textContent?.length}`);
+        if (message.url && sender.tab?.id && message.textContent) {
+            checkUrlThreats(message.url, sender.tab.id, message.textContent)
+                .then(result => {
+                    sendResponse({ success: true, updatedThreatDetails: result });
+                })
+                .catch(err => {
+                    error(`(Background): Error processing PAGE_CONTENT_FOR_ANALYSIS:`, err);
+                    sendResponse({ success: false, error: err.message });
+                });
+            return true; // Indicates asynchronous response
+        } else {
+            sendResponse({ success: false, error: "URL, tab ID, or textContent missing in PAGE_CONTENT_FOR_ANALYSIS" });
         }
     }
     // Return true if sendResponse will be called asynchronously.
@@ -161,7 +179,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 /**
  * Normalizes an API result to a 0-1 score.
- * @param {string} source - The API source (e.g., 'PHISHTANK').
+ * @param {string} source - The API source (e.g., 'PHISHTANK', 'AI_ENGINE', 'NLP_CONTENT').
  * @param {object} result - The result object from the API client.
  * @returns {number} A score between 0 and 1.
  */
@@ -177,6 +195,10 @@ function normalizeScore(source, result) {
             return result.isMalicious ? 1 : 0; // Could be refined based on threat types
         case 'VIRUSTOTAL':
             // VirusTotal: score (already 0-1 from positives/total)
+            return result.score || 0;
+        case 'AI_ENGINE': // For URL Heuristics
+            return result.score || 0;
+        case 'NLP_CONTENT': // For NLP Content Analysis
             return result.score || 0;
         default:
             return 0;
@@ -199,8 +221,9 @@ function getSeverity(score) {
  * Main function to check a URL against all configured threat intelligence APIs.
  * @param {string} url - The URL to check.
  * @param {number} tabId - The ID of the tab where the URL is being checked.
+ * @param {string|null} textContent - Optional: Page text content for NLP analysis. If null, NLP won't run yet.
  */
-async function checkUrlThreats(url, tabId) {
+async function checkUrlThreats(url, tabId, textContent) {
     if (!isExtensionCurrentlyActive) {
         log(`(Background) Extension is inactive. Skipping threat check for ${url}`);
         return;
@@ -216,7 +239,20 @@ async function checkUrlThreats(url, tabId) {
     const sourceResults = {};
     let anySourceReportedThreat = false;
 
-    // 1. PhishTank
+    // 1. Local AI Engine URL Analysis
+    try {
+        const aiAnalysisResult = aiEngine.analyzeUrlLocally(url);
+        sourceResults.aiEngine = aiAnalysisResult;
+        const aiScore = aiAnalysisResult.score || 0;
+        if (aiScore > 0) anySourceReportedThreat = true;
+        unifiedScore += aiScore * API_WEIGHTS.AI_ENGINE;
+        log(`(Background) AI Engine URL check for ${url}: Score=${aiScore.toFixed(3)}`, aiAnalysisResult.details);
+    } catch (e) {
+        error(`(Background) Error running AI Engine URL analysis for ${url}:`, e);
+        sourceResults.aiEngine = { score: 0, error: e.message, details: {} };
+    }
+
+    // 2. PhishTank
     try {
         let phishTankResult = await apiCache.getCachedResponse('phishtank', url);
         if (!phishTankResult) {
@@ -238,7 +274,7 @@ async function checkUrlThreats(url, tabId) {
         sourceResults.phishtank = { error: e.message };
     }
 
-    // 2. Google Safe Browsing
+    // 3. Google Safe Browsing
     try {
         let safeBrowsingResult = await apiCache.getCachedResponse('safebrowsing', url);
         if (!safeBrowsingResult) {
@@ -260,7 +296,7 @@ async function checkUrlThreats(url, tabId) {
         sourceResults.safeBrowsing = { error: e.message };
     }
 
-    // 3. VirusTotal
+    // 4. VirusTotal
     try {
         let virusTotalResult = await apiCache.getCachedResponse('virustotal', url);
         if (!virusTotalResult) {
@@ -282,8 +318,28 @@ async function checkUrlThreats(url, tabId) {
         sourceResults.virusTotal = { error: e.message };
     }
     
-    // Ensure score is capped at 1
+    // 5. NLP Content Analysis (if textContent is provided)
+    if (textContent) {
+        try {
+            const nlpAnalysisResult = await aiEngine.analyzePageContentLocally(textContent);
+            sourceResults.nlpContent = nlpAnalysisResult;
+            const nlpScore = normalizeScore('NLP_CONTENT', nlpAnalysisResult);
+            if (nlpScore > 0) anySourceReportedThreat = true;
+            unifiedScore += nlpScore * API_WEIGHTS.NLP_CONTENT;
+            log(`(Background) NLP Content check for ${url}: Score=${nlpScore.toFixed(3)}`, nlpAnalysisResult.details || nlpAnalysisResult.keywordsFound);
+        } catch (e) {
+            error(`(Background) Error running NLP Content analysis for ${url}:`, e);
+            sourceResults.nlpContent = { score: 0, error: e.message, details: {} };
+        }
+    } else {
+        sourceResults.nlpContent = { score: 0, error: "Not run / no content provided", details: {} };
+        debug(`(Background) NLP Content analysis skipped for ${url} as no textContent was provided in this call.`);
+    }
+    
+    // Ensure score is capped at 1 after all additions
     unifiedScore = Math.min(unifiedScore, 1);
+    // Also ensure score is not negative if any component somehow produced a negative value (should not happen with current normalizers)
+    unifiedScore = Math.max(unifiedScore, 0);
 
     const severity = getSeverity(unifiedScore);
     const threatDetails = {
@@ -386,3 +442,20 @@ debug("(Background): Service worker script loaded and advanced threat detection 
 // Ensure warning icons are specified in manifest.json web_accessible_resources if not already
 // "src/assets/logo/logo-warning-16.png",
 // "src/assets/logo/logo-warning-32.png" 
+
+// Inside service_worker.js for testing
+async function testNLP() {
+    const testText1 = "URGENT! We have detected unusual activity on your account. Please verify your account immediately to avoid suspension. Click here to confirm your details and secure your login. This is your final notice, act now or your account will be locked.";
+    const result1 = await aiEngine.analyzePageContentLocally(testText1);
+    log("NLP Test 1 Result:", result1);
+
+    const benignText = "This is a very long and safe text about the history of the internet, discussing various protocols like TCP/IP, HTTP, and the development of web browsers. It does not contain any scary words or urgent calls to action, nor does it promise any prizes or ask for account verification. It's purely informational and educational, designed to be as innocuous as possible for testing purposes. We need to ensure it passes the 100 character minimum for the NLP analysis to run. This should be sufficient.";
+    const resultBenign = await aiEngine.analyzePageContentLocally(benignText);
+    log("NLP Test Benign Result:", resultBenign);
+    
+    // Add more test cases here
+}
+
+// Call it, perhaps after initialization or on some trigger
+// For example, at the end of your service worker script for immediate testing on reload:
+testNLP().catch(e => error("NLP Test function error:", e)); 

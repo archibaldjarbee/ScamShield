@@ -26,8 +26,8 @@ function showOptionsPageStatusMessage(elementId, message, isError = false, durat
         if (duration > 0) {
             setTimeout(() => {
                 if (statusElement.textContent === message) { // Clear only if message hasn't changed
-                    statusElement.textContent = '';
-                    statusElement.classList.remove('error');
+                statusElement.textContent = '';
+                statusElement.classList.remove('error');
                     statusElement.style.display = 'none'; // Hide after timeout
                 }
             }, duration);
@@ -307,31 +307,20 @@ async function requestThreatAnalysisForActiveTab() {
                             message: 'Could not fetch analysis from service worker.',
                             timestamp: new Date().toISOString()
                         });
-                    } else if (response && response.status === "error") {
-                        error("(OptionsPage) Service worker returned error for REQUEST_URL_CHECK:", response.message);
-                        showOptionsPageStatusMessage('analysisStatusMessageOptions', 'Analysis error: ' + (response.message || 'Unknown error'), true, 0);
+                    } else if (response && response.success === false) {
+                        error("(OptionsPage) Service worker returned error for REQUEST_URL_CHECK:", response.error);
+                        showOptionsPageStatusMessage('analysisStatusMessageOptions', 'Analysis error: ' + (response.error || 'Unknown error'), true, 0);
                          displayThreatAnalysisInOptions({
                             url: currentTab.url,
                             score: 0,
                             severity: 'Error',
-                            message: response.message || 'Failed to analyze URL.',
+                            message: response.error || 'Failed to analyze URL.',
                             timestamp: new Date().toISOString()
                         });
-                    } else if (response && response.status === "success" && response.threatDetails) {
-                        // The service worker now sends the threatDetails directly in the response
-                        // to REQUEST_URL_CHECK if it's initiated by options/popup.
-                        // So, we don't need to listen for SHOW_WARNING_BANNER here if this is the case.
-                        // Let's assume the service_worker is updated to do this.
-                        // If not, we'd need the listener approach.
-                        debug("(OptionsPage) Received direct threat details:", response.threatDetails);
-                        displayThreatAnalysisInOptions(response.threatDetails);
+                    } else if (response && response.success === true && response.result) {
+                        debug("(OptionsPage) Received direct threat details:", response.result);
+                        displayThreatAnalysisInOptions(response.result);
                         showOptionsPageStatusMessage('analysisStatusMessageOptions', 'Analysis complete.', false);
-                    } else if (response && response.status === "pending") {
-                         showOptionsPageStatusMessage('analysisStatusMessageOptions', 'Analysis is pending. Service worker is processing.', false, 0);
-                         // Optionally, clear the old details or show a loading state more explicitly
-                        if (uiElements.analysisDetailsBreakdownOptions) {
-                           uiElements.analysisDetailsBreakdownOptions.innerHTML = '<p><em>Analysis in progress...</em></p>';
-                        }
                     } else {
                          error("(OptionsPage) Unexpected response from REQUEST_URL_CHECK:", response);
                         showOptionsPageStatusMessage('analysisStatusMessageOptions', 'Unexpected response from analysis request.', true, 0);
@@ -591,4 +580,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     log("(OptionsPage): Options page initialized successfully.");
-});
+}); 

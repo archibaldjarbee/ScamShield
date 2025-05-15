@@ -1,4 +1,5 @@
 import { log, warn, error, debug } from '../shared/logger.js';
+import DOMScanner from './domScanner.js';
 
 // Keywords indicating potential scams - **REMOVED, will be fetched from storage**
 // const scamKeywords = [ ... ];
@@ -8,6 +9,7 @@ let extensionIsActive = true; // Default to true, will be updated from storage
 
 // Store a reference to the warning UI if it's visible
 let currentWarningUI = null;
+let domScannerInstance = null; // To hold the DOMScanner instance
 
 /**
  * Initializes the content script's understanding of the extension's active status.
@@ -28,25 +30,111 @@ async function initializeContentScriptStatus() {
     }
 
     if (extensionIsActive) {
-        await checkBlacklist(); // L3 (Red) - stops if warning shown
+        // Instantiate and run DOM Scanner
+        if (!domScannerInstance) { // Initialize only once
+            try {
+                domScannerInstance = new DOMScanner();
+                // Initial page scan for DOM threats
+                domScannerInstance.scanPage(); 
+                // Attach form submission listeners
+                domScannerInstance.analyzeFormsOnSubmit();
+                log("(Content Script): DOMScanner initialized and activated.");
+            } catch(e) {
+                error("(Content Script): Failed to initialize or run DOMScanner:", e);
+            }
+        } else {
+            // If already initialized (e.g. script re-injected or status toggled), rescan if needed or ensure active
+            // For simplicity, a fresh scanPage could be called, or ensure listeners are attached.
+            // domScannerInstance.scanPage(); // Re-scan if status toggled from off to on?
+            // domScannerInstance.analyzeFormsOnSubmit(); // Ensure listeners are still there
+        }
         
-        if (!currentWarningUI) { // Only proceed if no L3 warning
-            const l2WarningShown = await checkForLevel2Warnings(); // L2 (Orange)
-            if (!l2WarningShown && !currentWarningUI) { // Only proceed if no L2 warning
-                await scanPageContentForKeywords(); // L1 (Yellow for page content)
+        // Existing logic (runs after DOM scanner has done its initial setup)
+        await checkBlacklist(); 
+        
+        if (!currentWarningUI) { 
+            const l2WarningShown = await checkForLevel2Warnings(); 
+            if (!l2WarningShown && !currentWarningUI) { 
+                await scanPageContentForKeywords(); 
             }
         }
         // Link scanner (L1 for links) is always active if extension is active, 
         // but displayGraduatedWarning itself checks currentWarningUI.
         document.addEventListener('click', linkScannerClickListener, true);
-        log("(Content Script): Listeners active.");
+        log("(Content Script): Core listeners active.");
+
+        // After local checks, if no major warning is already up, send page content for deeper analysis
+        if (!currentWarningUI) {
+            sendPageContentForAnalysis();
+        }
+
     } else {
         log("(Content Script): Extension is inactive. Listeners not attached.");
+        if (domScannerInstance) { // If previously active, ensure highlights are removed
+            try {
+                domScannerInstance.removeAllHighlights();
+                log("(Content Script): DOMScanner highlights removed as extension is inactive.");
+            } catch (e) {
+                error("(Content Script): Error removing DOMScanner highlights:", e);
+            }
+            // Optionally nullify domScannerInstance if extension becomes inactive to force re-init on next activation
+            // domScannerInstance = null; 
+        }
     }
 }
 
 // Call initialization
 initializeContentScriptStatus();
+
+/**
+ * Extracts visible text content from the current page.
+ * A simple implementation using document.body.innerText.
+ * @returns {string} The extracted text.
+ */
+function extractPageText() {
+    if (document.body) {
+        // Considerations for more advanced extraction:
+        // - Select specific elements like <main>, <article>
+        // - Exclude nav, footer, aside elements
+        // - Handle shadow DOM if necessary (more complex)
+        // - For now, body.innerText is a broad but decent starting point.
+        debug("(Content Script) Extracting text from document.body.innerText");
+        return document.body.innerText || "";
+    } else {
+        warn("(Content Script) document.body not available for text extraction.");
+        return "";
+    }
+}
+
+/**
+ * Sends the extracted page content to the service worker for NLP analysis.
+ */
+async function sendPageContentForAnalysis() {
+    const pageText = extractPageText();
+    const currentUrl = window.location.href;
+
+    if (!pageText || pageText.trim().length < 50) { // Don't send if very little text
+        debug("(Content Script) Not enough text content to send for NLP analysis (", pageText.length, " chars).");
+        return;
+    }
+
+    log(`(Content Script) Sending page content for NLP analysis. URL: ${currentUrl}, Text length: ${pageText.length}`);
+    try {
+        const response = await chrome.runtime.sendMessage({
+            type: "PAGE_CONTENT_FOR_ANALYSIS",
+            url: currentUrl,
+            textContent: pageText
+        });
+        if (response && response.success) {
+            debug("(Content Script) Page content successfully sent for analysis.", response);
+        } else {
+            warn("(Content Script) Sending page content for analysis failed or no success response.", response);
+        }
+    } catch (e) {
+        error("(Content Script) Error sending page content for analysis:", e);
+        // This can happen if the service worker is not listening or an error occurs there.
+    }
+}
 
 // Add listener for messages from the background script (service worker)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

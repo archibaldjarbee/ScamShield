@@ -43,6 +43,7 @@
         "data/blacklist.json", 
         "src/js/content/content_script.js", 
         "src/js/shared/logger.js",
+        "src/js/content/domScanner.js",
         "src/assets/logo/logo-16.png",
         "src/assets/logo/logo-32.png",
         "src/assets/logo/logo-48.png",
